@@ -1,12 +1,35 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response
 import requests
 import json
+import time
 
+MINUTE = 3
+currencies = [
+    "USD", "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN",
+    "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL", "BSD",
+    "BTN", "BWP", "BYN", "BZD", "CAD", "CDF", "CHF", "CLP", "CNY", "COP", "CRC",
+    "CUC", "CUP", "CVE", "CZK", "DJF", "DKK", "DOP", "DZD", "EGP", "ERN", "ETB",
+    "EUR", "FJD", "FKP", "GBP", "GEL", "GGP", "GHS", "GIP", "GMD", "GNF", "GTQ",
+    "GYD", "HKD", "HNL", "HRK", "HTG", "HUF", "IDR", "ILS", "IMP", "INR", "IQD",
+    "IRR", "ISK", "JEP", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KPW",
+    "KRW", "KWD", "KYD", "KZT", "LAK", "LBP", "LKR", "LRD", "LSL", "LYD", "MAD",
+    "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRO", "MUR", "MVR", "MWK", "MXN",
+    "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR", "NZD", "OMR", "PAB", "PEN",
+    "PGK", "PHP", "PKR", "PLN", "PYG", "QAR", "RON", "RSD", "RUB", "RWF", "SAR",
+    "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLL", "SOS", "SRD", "STD", "SVC",
+    "SYP", "SZL", "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS",
+    "UAH", "UGX", "USD", "UYU", "UZS", "VEF", "VND", "VUV", "WST", "XAF", "XCD",
+    "XOF", "XPF", "YER", "ZAR", "ZMW"
+]
+
+currency_dict = {currency: True for currency in currencies}
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 }
 
 app = Flask(__name__)
+
+gdata = {}
 
 
 def get_price(code='USD'):
@@ -22,43 +45,72 @@ def get_price(code='USD'):
             return error_message, response.status_code  # Server-side error
         else:
             return "Unknown error occurred.", 500 # Default error response
-
     try:
-        json_data = json.loads(response.content)
-        Gold_OZ_Price = json_data['items'][0]['xauPrice']
-        Gold_OZ_PrevClose = json_data['items'][0]['xauClose']
-        Silver_OZ_Price = json_data['items'][0]['xagPrice']
-        Silver_OZ_PrevClose = json_data['items'][0]['xagClose']
-
-        return jsonify(
-            {
-                'date': json_data['date'],
-                'ts': json_data['ts'],
-                'code': code,
-                'gold': {
-                    'price': round(Gold_OZ_Price, 2),
-                    'close': round(Gold_OZ_PrevClose, 2)
-                },
-                'silver': {
-                    'price': round(Silver_OZ_Price, 2),
-                    'close': round(Silver_OZ_PrevClose, 2)
-                }
-            })
+        gdata[code] = json.loads(response.content)
+        return make_data(code, gdata[code])
     except Exception:
         return "Failed on getting live price", 500
+
+
+def make_data(code, json_data):
+    Gold_OZ_Price = json_data['items'][0]['xauPrice']
+    Gold_OZ_PrevClose = json_data['items'][0]['xauClose']
+    Silver_OZ_Price = json_data['items'][0]['xagPrice']
+    Silver_OZ_PrevClose = json_data['items'][0]['xagClose']
+
+    return jsonify(
+        {
+            'date': json_data['date'],
+            'ts': json_data['ts'],
+            'code': code,
+            'gold': {
+                'price': round(Gold_OZ_Price, 2),
+                'close': round(Gold_OZ_PrevClose, 2)
+            },
+            'silver': {
+                'price': round(Silver_OZ_Price, 2),
+                'close': round(Silver_OZ_PrevClose, 2)
+            }
+        })
+
+
+def get_cached_data(code='USD'):
+    if code in gdata:
+        return gdata[code]
+    return None
 
 
 @app.route('/', methods=['GET'])
 @app.route('/<code>', methods=['GET'])
 def get_live_price(code=None):
-    if code:
-        response = get_price(code)
+    current_time = int(time.time() * 1000)
+    if code is None:
+        code = 'USD'
+
+    if code not in currency_dict:
+        return "Error: currency code not supported.", 404
+
+    data = get_cached_data(code)
+    if data:
+        diff_time = current_time - data['ts']
+        if diff_time < (60000 * MINUTE):  # convert to min
+            response = make_data(code, gdata[code])
+        else:
+            response = get_price(code)
     else:
-        response = get_price()
+        print("On Internet")
+        response = get_price(code)
+    # for key, value in gdata.items():
+    #    print(key, ':', value)
     if response:
         return response
     else:
         return "Error: Failed to retrieve webpage or response is not successful.", 404
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return Response(status=204)
 
 
 @app.errorhandler(404)
