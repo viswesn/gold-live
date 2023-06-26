@@ -3,7 +3,7 @@ import requests
 import json
 import time
 
-MINUTE = 3
+MINUTE = .5
 currencies = [
     "USD", "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN",
     "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL", "BSD",
@@ -58,18 +58,44 @@ def make_data(code, json_data):
     Silver_OZ_Price = json_data['items'][0]['xagPrice']
     Silver_OZ_PrevClose = json_data['items'][0]['xagClose']
 
+    Gold_Gram_Price = Gold_OZ_Price / 31.1035
+    Gold_Gram_PrevClose = Gold_OZ_PrevClose / 31.1035
+
+    Gold_KG_Price = Gold_Gram_Price * 1000
+    Gold_KG_PrevClose = Gold_Gram_PrevClose * 1000
+
+    Silver_KG_Price = Silver_OZ_Price * 32.15
+    Silver_KG_PrevClose = Silver_OZ_PrevClose * 32.15
+
+
     return jsonify(
         {
             'date': json_data['date'],
             'ts': json_data['ts'],
             'code': code,
             'gold': {
-                'price': round(Gold_OZ_Price, 2),
-                'close': round(Gold_OZ_PrevClose, 2)
+                "oz": {
+                    'price': round(Gold_OZ_Price, 2),
+                    'close': round(Gold_OZ_PrevClose, 2)
+                },
+                "gram": {
+                    'price': round(Gold_Gram_Price, 2),
+                    'close': round(Gold_Gram_PrevClose, 2)
+                },
+                "kg": {
+                    'price': round(Gold_KG_Price, 2),
+                    'close': round(Gold_KG_PrevClose, 2)
+                }
             },
             'silver': {
-                'price': round(Silver_OZ_Price, 2),
-                'close': round(Silver_OZ_PrevClose, 2)
+                "oz": {
+                    'price': round(Silver_OZ_Price, 2),
+                    'close': round(Silver_OZ_PrevClose, 2)
+                },
+                "kg": {
+                    'price': round(Silver_KG_Price, 2),
+                    'close': round(Silver_KG_PrevClose, 2)
+                }
             }
         })
 
@@ -83,6 +109,7 @@ def get_cached_data(code='USD'):
 @app.route('/', methods=['GET'])
 @app.route('/<code>', methods=['GET'])
 def get_live_price(code=None):
+    response = None
     current_time = int(time.time() * 1000)
     if code is None:
         code = 'USD'
@@ -94,18 +121,19 @@ def get_live_price(code=None):
     if data:
         diff_time = current_time - data['ts']
         if diff_time < (60000 * MINUTE):  # convert to min
+            print("On Cache")
             response = make_data(code, gdata[code])
-        else:
-            response = get_price(code)
-    else:
+
+    if response is None:
         print("On Internet")
         response = get_price(code)
+
     # for key, value in gdata.items():
     #    print(key, ':', value)
     if response:
         return response
-    else:
-        return "Error: Failed to retrieve webpage or response is not successful.", 404
+
+    return "Error: Failed to retrieve webpage or response is not successful.", 404
 
 
 @app.route('/favicon.ico')
@@ -120,6 +148,3 @@ def page_not_found(error):
 
 if __name__ == '__main__':
     app.run()
-
-
-
